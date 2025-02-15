@@ -4,13 +4,20 @@
 #include <unistd.h>
 #include <arpa/inet.h>  // dealing with internet addresses
 #include <sys/socket.h> // dealing with sockets, posix. windows needs winsock.h
-
+#include <signal.h>
 #define PORT 8080 // on localhost:8080
 #define BUFFER_SIZE 1024
 #define MAX_CLIENTS 3
 
 struct sockaddr_in address;
 socklen_t addrlen = sizeof(address);
+
+struct Server
+{
+    int fd;
+    int port;
+    int is_running;
+};
 
 int create_socket()
 {
@@ -46,7 +53,7 @@ int create_socket()
 void bind_socket(int server_fd)
 {
     // memset() sets the first n bytes of the memory area pointed to by s to the specified value (0 in this case)
-    memset(&address, 0, sizeof(address)); // set address to 0, not '0'
+    memset(&address, 0, sizeof(address)); // set address to 0, not '0'. garbage values can't interfere with the bind
     address.sin_family = AF_INET;         // address family, IPv4
     address.sin_addr.s_addr = INADDR_ANY; // accept connections on all network interfaces
     address.sin_port = htons(PORT);       // convert PORT from host byte order to network byte order
@@ -64,6 +71,14 @@ void bind_socket(int server_fd)
         exit(EXIT_FAILURE);
     }
     printf("Socket bound to port %d\n", PORT);
+}
+
+void graceful_shutdown(int sig, int server_fd)
+{
+    printf("Shutting down server...\n");
+    close(server_fd);
+    printf("Server closed\n");
+    exit(0);
 }
 
 int client_connect(int server_fd)
@@ -92,17 +107,47 @@ int client_connect(int server_fd)
     printf("Client response: %s\n", buffer);
 
     // close connection
-    close(client_fd);
-    printf("Connection closed\n");
+    graceful_shutdown(0, client_fd);
 
     return client_fd;
 }
 
+void run_server(int port)
+{
+    struct Server server = {
+        .fd = create_socket(),
+        .port = port,
+        .is_running = 1};
+    bind_socket(server.fd);
+
+    printf("Server created on port %d\n", port);
+
+    while (server.is_running) // while to keep the server running
+    {
+        int client_fd = client_connect(server.fd);
+        if (client_fd < 0)
+        {
+            // handle shutdowns
+            printf("Client disconnected\n");
+            server.is_running = 0;
+        }
+        else
+        {
+            printf("Client connected\n");
+        }
+        graceful_shutdown(0, client_fd);
+    }
+
+    if (server.fd >= 0)
+    {
+        graceful_shutdown(0, server.fd);
+        printf("shutdown complete\n");
+    }
+}
+
 int main(int argc, char *argv[])
 {
-    int server_fd = create_socket();
-    bind_socket(server_fd);
-    client_connect(server_fd);
+    run_server(PORT);
 
     return 0;
 }
