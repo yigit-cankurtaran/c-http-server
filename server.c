@@ -15,16 +15,30 @@ socklen_t addrlen = sizeof(address);
 int create_socket()
 {
     int server_fd;
-    // fd = file descriptor, number that refers to an open file, socket, or pipe
-    // socket() creates an endpoint for communication and returns a file descriptor that refers to that endpoint
-    // AF_INET = IPv4 internet protocols
-    // SOCK_STREAM = TCP
-    // 0 = default protocol for stream sockets
+    int opt = 1;
+    // we can't immediately re-run the server because the port is still in a "TIME_WAIT" state
+    // i will set the socket options to reuse the address even if it's in this state
+
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) // if socket creation fails (server_fd is negative)
     {
+        // fd = file descriptor, number that refers to an open file, socket, or pipe
+        // socket() creates an endpoint for communication and returns a file descriptor that refers to that endpoint
+        // AF_INET = IPv4 internet protocols
+        // SOCK_STREAM = TCP
+        // 0 = default protocol for stream sockets
         perror("socket failed");
         return -1;
     }
+
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+    {
+        // setsockopt() sets the socket options at the option level specified by the level parameter
+        // SO_REUSEADDR = socket options reuse address
+        // SO_REUSEPORT = socket options reuse port
+        perror("setsockopt failed");
+        return -1;
+    }
+
     printf("Socket created on port %d\n", PORT);
     return server_fd;
 }
@@ -32,7 +46,7 @@ int create_socket()
 void bind_socket(int server_fd)
 {
     // memset() sets the first n bytes of the memory area pointed to by s to the specified value (0 in this case)
-    memset(&address, '0', sizeof(address));
+    memset(&address, 0, sizeof(address)); // set address to 0, not '0'
     address.sin_family = AF_INET;         // address family, IPv4
     address.sin_addr.s_addr = INADDR_ANY; // accept connections on all network interfaces
     address.sin_port = htons(PORT);       // convert PORT from host byte order to network byte order
@@ -41,7 +55,6 @@ void bind_socket(int server_fd)
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) // if bind fails
     {
         perror("bind failed");
-        // BUG: first time bind works properly, running right afterwards i get a "address already in use" error, will fix
         exit(EXIT_FAILURE);
     }
 
@@ -63,7 +76,7 @@ int client_connect(int server_fd)
 
     if ((client_fd = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0)
     {
-        perror("accept");
+        perror("client accept failed");
         return -1;
     }
     printf("Connection accepted on port %d\n", PORT);
