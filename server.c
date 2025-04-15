@@ -149,7 +149,6 @@ void run_server(int port)
         {
             printf("Client connected\n");
         }
-        close(client_fd); // close this one client's socket
     }
 
     if (server.fd >= 0)
