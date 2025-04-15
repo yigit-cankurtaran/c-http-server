@@ -59,6 +59,8 @@ void bind_socket(int server_fd)
     address.sin_port = htons(PORT);       // convert PORT from host byte order to network byte order
     // we need the conversion because different systems use different conventions for ordering the bytes in a word
 
+    // the same struct sockaddr thing is here as well
+    // maybe we're getting the value of the address and casting it to a sockaddr struct?
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) // if bind fails
     {
         perror("bind failed");
@@ -75,7 +77,7 @@ void bind_socket(int server_fd)
 
 void graceful_shutdown(int sig, int server_fd)
 {
-    printf("Shutting down server...\n");
+    printf("Shutting down server with signal %d\n", sig);
     close(server_fd);
     printf("Server closed\n");
     exit(0);
@@ -83,12 +85,13 @@ void graceful_shutdown(int sig, int server_fd)
 
 int client_connect(int server_fd)
 {
-    int client_fd;
+    int client_fd; // fd = file descriptor again
     char buffer[BUFFER_SIZE] = {0}; // the brackets are used to initialize the array to 0
     const char *message = "Hello, client!\n";
 
     printf("Waiting for client connection...\n");
 
+    // TODO: what does the struct sockaddr thing mean here?
     if ((client_fd = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0)
     {
         perror("client accept failed");
