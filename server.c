@@ -150,14 +150,6 @@ void run_server(int port)
 
 int main(int argc, char *argv[])
 {
-    /*
-        running nc -l 8080 after we run a.out gives us the following output
-        nc -l 8080
-        nc: Address already in use
-        nc -l 8080 "hello"
-        nc: Can't assign requested address
-        // find out why.
-    */
     run_server(PORT);
 
     return 0;
