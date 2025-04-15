@@ -85,9 +85,9 @@ void graceful_shutdown(int sig, int server_fd)
 
 int client_connect(int server_fd)
 {
-    int client_fd; // fd = file descriptor again
+    int client_fd;
     char buffer[BUFFER_SIZE] = {0}; // the brackets are used to initialize the array to 0
-    const char *message = "Hello, client!\n";
+    const char *greeting = "you're connected. type something:\n";
 
     printf("Waiting for client connection...\n");
 
@@ -100,18 +100,29 @@ int client_connect(int server_fd)
     printf("Connection accepted on port %d\n", PORT);
 
     // send message to client
-    // use netcat to test: nc -l 8080
-    send(client_fd, message, strlen(message), 0); // send client_fd the message, size of message, flags
-    printf("Message sent to client\n");
+    // use netcat to test: nc localhost 8080
+    send(client_fd, greeting, strlen(greeting), 0); // send client_fd the message, size of message, flags
 
-    // read client response
-    // we take whatever we write in then press enter, and it will be sent to the server
-    read(client_fd, buffer, BUFFER_SIZE); // read client_fd into buffer, size of buffer
-    printf("Client response: %s\n", buffer);
+    while(1){
+        memset(buffer, 0, BUFFER_SIZE); // clear buffer
 
-    // close connection
-    // graceful_shutdown(0, client_fd);
+        // read client response
+        // we take whatever we write in then press enter, and it will be sent to the server
+        int bytes_read = read(client_fd, buffer, BUFFER_SIZE);
+        if (bytes_read <= 0)
+        {
+            printf("client disconnected\n");
+            break;
+        }
 
+        buffer[bytes_read] = '\0'; // end buffer
+        printf("client: %s", buffer);
+
+        const char *response = "msg received\n";
+        send(client_fd, response, strlen(response), 0);
+    }
+
+    close(client_fd); // done with client
     return client_fd;
 }
 
