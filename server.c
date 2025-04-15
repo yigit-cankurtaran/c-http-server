@@ -110,7 +110,7 @@ int client_connect(int server_fd)
     printf("Client response: %s\n", buffer);
 
     // close connection
-    graceful_shutdown(0, client_fd);
+    // graceful_shutdown(0, client_fd);
 
     return client_fd;
 }
@@ -120,9 +120,9 @@ void run_server(int port)
     struct Server server = {
         .fd = create_socket(),
         .port = port,
-        .is_running = 1};
+        .is_running = 1
+    };
     bind_socket(server.fd);
-
     printf("Server created on port %d\n", port);
 
     while (server.is_running) // while to keep the server running
@@ -138,7 +138,7 @@ void run_server(int port)
         {
             printf("Client connected\n");
         }
-        graceful_shutdown(0, client_fd);
+        close(client_fd); // close this one client's socket
     }
 
     if (server.fd >= 0)
