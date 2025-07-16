@@ -2,15 +2,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>     // for signal handling
 #include <arpa/inet.h>  // dealing with internet addresses
 #include <sys/socket.h> // dealing with sockets, posix. windows needs winsock.h
-#include <signal.h>
-#define PORT 8080 // on localhost:8080
+
+#define DEFAULT_PORT 8080
 #define BUFFER_SIZE 1024
 #define MAX_CLIENTS 3
 
-struct sockaddr_in address;
-socklen_t addrlen = sizeof(address);
+// we need a global server file descriptor to be able to close it in the signal handler
+volatile int g_server_fd = -1;
 
 struct Server
 {
@@ -46,17 +47,18 @@ int create_socket()
         return -1;
     }
 
-    printf("Socket created on port %d\n", PORT);
+    printf("Socket created\n");
     return server_fd;
 }
 
-void bind_socket(int server_fd)
+void bind_socket(int server_fd, int port)
 {
+    struct sockaddr_in address;
     // memset() sets the first n bytes of the memory area pointed to by s to the specified value (0 in this case)
     memset(&address, 0, sizeof(address)); // set address to 0, not '0'. garbage values can't interfere with the bind
     address.sin_family = AF_INET;         // address family, IPv4
     address.sin_addr.s_addr = INADDR_ANY; // accept connections on all network interfaces
-    address.sin_port = htons(PORT);       // convert PORT from host byte order to network byte order
+    address.sin_port = htons(port);       // convert port from host byte order to network byte order
     // we need the conversion because different systems use different conventions for ordering the bytes in a word
 
     // the same struct sockaddr thing is here as well
@@ -72,32 +74,48 @@ void bind_socket(int server_fd)
         perror("listen failed");
         exit(EXIT_FAILURE);
     }
-    printf("Socket bound to port %d\n", PORT);
+    printf("Socket bound to port %d\n", port);
 }
 
 void graceful_shutdown(int sig, int server_fd)
 {
-    printf("Shutting down server with signal %d\n", sig);
+    // adding a newline for cleaner output on Ctrl+C
+    printf("\nShutting down server with signal %d\n", sig);
     close(server_fd);
     printf("Server closed\n");
     exit(0);
 }
 
-int client_connect(int server_fd)
+void signal_handler(int sig)
+{
+    // this function is called when a signal is received
+    // we use it to gracefully shutdown the server
+    if (g_server_fd != -1)
+    {
+        graceful_shutdown(sig, g_server_fd);
+    }
+    else
+    {
+        exit(0);
+    }
+}
+
+int client_connect(int server_fd, int port)
 {
     int client_fd;
+    struct sockaddr_in address;
+    socklen_t addrlen = sizeof(address);
     char buffer[BUFFER_SIZE] = {0}; // the brackets are used to initialize the array to 0
     const char *greeting = "you're connected. type something:\n";
 
     printf("Waiting for client connection...\n");
 
-    // TODO: what does the struct sockaddr thing mean here?
-    if ((client_fd = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0)
+    if ((client_fd = accept(server_fd, (struct sockaddr *)&address, &addrlen)) < 0)
     {
         perror("client accept failed");
         return -1;
     }
-    printf("Connection accepted on port %d\n", PORT);
+    printf("Connection accepted on port %d\n", port);
 
     // send message to client
     // use netcat to test: nc localhost 8080
@@ -131,18 +149,26 @@ void run_server(int port)
     struct Server server = {
         .fd = create_socket(),
         .port = port,
-        .is_running = 1
-    };
-    bind_socket(server.fd);
-    printf("Server created on port %d\n", port);
+        .is_running = 1};
+    g_server_fd = server.fd; // store fd in global for signal handler
+
+    if (server.fd < 0)
+    {
+        // socket creation failed
+        return;
+    }
+
+    bind_socket(server.fd, server.port);
+    printf("Server listening on port %d\n", port);
 
     while (server.is_running) // while to keep the server running
     {
-        int client_fd = client_connect(server.fd);
+        int client_fd = client_connect(server.fd, server.port);
         if (client_fd < 0)
         {
-            // handle shutdowns
-            printf("Client disconnected\n");
+            // client_connect returns -1 on accept error.
+            // Stop the server for now.
+            perror("Accept failed, shutting down server");
             server.is_running = 0;
         }
         else
@@ -160,7 +186,22 @@ void run_server(int port)
 
 int main(int argc, char *argv[])
 {
-    run_server(PORT);
+    int port = DEFAULT_PORT;
+    // allow specifying port from command line
+    if (argc > 1)
+    {
+        port = atoi(argv[1]);
+        if (port == 0) // atoi returns 0 if input is not a valid number
+        {
+            fprintf(stderr, "Invalid port number provided: %s\n", argv[1]);
+            return EXIT_FAILURE;
+        }
+    }
+
+    // register signal handler for Ctrl+C (SIGINT)
+    signal(SIGINT, signal_handler);
+
+    run_server(port);
 
     return 0;
 }
